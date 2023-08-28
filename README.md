@@ -48,9 +48,10 @@ Welcome to the Image Moderation Web Application! This application allows users t
 
 6)The Flask server will start running locally at http://127.0.0.1:5000/.
 
-7)Then head over to the frontend folder and run the command ```bash
+7)Then head over to the frontend folder and run the commandnd this will take you to the webpage where you can upload multiple files and go ahead to the cutomer_service webpage after loggin into your account:
+```bash
   npm start
-```and this will take you to the webpage where you can upload multiple files and go ahead to the cutomer_service webpage after loggin into your account.
+```
 
 
 ## How to Use
