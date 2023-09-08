@@ -302,4 +302,26 @@ img {
     cursor: pointer;
     
   }
+
+  /* Add red border to input containers when there's an error */
+.input-container {
+    position: relative; /* Add relative positioning to the container */
+  }
+  
+  .input-container.error input[type="text"],
+  .input-container.error textarea {
+    border: 1px solid red; /* Add red border when there's an error */
+  }
+  
+  .input-container.error label {
+    color: red; /* Change label color to red when there's an error */
+  }
+  
+  /* Add error message styles */
+  .error-message {
+    color: red;
+    font-size: 12px;
+    margin-top: 5px;
+  }
+  
   

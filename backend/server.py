@@ -5,13 +5,21 @@ from config import TENANT_ID, tables, table2, table3
 from flask_cors import CORS
 import random
 import uuid
+from flask_session import Session
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity
+from okta_jwt_verifier import AccessTokenVerifier  
+from okta_config import OKTA_CONFIG  # Import the Okta configuration
+
+
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_TYPE'] = 'filesystem'
 app.secret_key = 'super secret key'
-user_fetched_images_table = table3
 user_table = table2
+jwt = JWTManager(app)
 
 @app.route('/register', methods=['POST'])
 def register_user():
@@ -44,129 +52,139 @@ def register_user():
 @app.route('/login', methods=['POST'])
 def login_user():
     data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    session['username'] = username  # Store the username in session
-    moderate_count = data.get('moderate_count')
+    okta_token = data.get('okta_token')
 
-    if not username or not password:
-        return jsonify({'error': 'Username and password are required'}), 400
+    print(f"Okta token is:{okta_token}")
+    
+    if not okta_token:
+        return jsonify({'error': 'Okta token is required'}), 400
 
-    user_data = user_table.get_item(Key={'username': username}).get('Item')
-    session_id = str(uuid.uuid4())
+    print(f"Received Okta token: {okta_token}")
 
-    if user_data and check_password_hash(user_data['password'], password):
-        session.clear()  # Clear any existing session data
-        session['session_id'] = session_id  # Set the session_id here
-        session['assigned_uuids'] = []  # Initialize the assigned_uuids array
-        session['moderate_count'] = moderate_count  # Store the moderate_count in session
-        session['username'] = username  # Store the username in session
-        print(f"Username set in session: {session['username']}")
-        return jsonify({'message': 'Login successful'}), 200
-    else:
-        return jsonify({'error': 'Invalid username or password'}), 401
+    # Validate the Okta token using the Okta configuration
+    verifier = AccessTokenVerifier(OKTA_CONFIG['issuer'], OKTA_CONFIG['client_id'])
+
+    try:
+        claims = verifier.verify_token(okta_token)
+    except Exception as e:
+        return jsonify({'error': 'Invalid Okta token'}), 401
+
+    # If the Okta token is valid, you can proceed with generating an access token
+    # and performing any required authentication logic.
+
+    # Create a regular JWT access token with the identity (customize as needed)
+    access_token = create_access_token(identity=claims['sub'])
+
+    return jsonify({'access_token': access_token}), 200
+
+
+
 
     
 
     
 @app.route('/fetch_new_images', methods=['GET'])
+@jwt_required()
 def fetch_new_images():
     try:
+        # Extract the username and session_id from the JWT token
+        current_user = get_jwt_identity()
+        current_session_token = request.headers.get('Authorization')  # Retrieve session token from header
+        current_session_token = current_session_token.split(' ')[1]  # Remove "Bearer " from the token
+
+        print(f"The sesion token is {current_session_token}")
+
+        # Initialize DynamoDB tables
+        image_table = tables  # Assuming 'tables' represents the table for the images
+        session_table = table3  # Assuming 'table3' represents the session info table
+
+        # Fetch images with status 'PENDING' and lock_status 'Unlocked'
+        response = image_table.query(
+            IndexName='Manual_Status-Lock-Status-index',
+            KeyConditionExpression=Key('Manual_Status').eq('PENDING') & Key('Lock-Status').eq('Unlocked')
+        )
+        pending_images = response['Items']
+
+        if not pending_images:
+            return jsonify({'message': 'No more images left as pending / Images currently in use by other users.'})
+
         # Determine the count parameter
         if 'count' in request.args:
             count = int(request.args.get('count'))
         elif 'moderate_count' in request.args:
             count = int(request.args.get('moderate_count'))
         else:
-            return jsonify({'error': 'Invalid parameter'})
-
-        print(f"The count is {count}")
-
-        username = request.args.get('username')
-        print(f"The usernmae is: {username}")
-
-        # Initialize DynamoDB table
-        table = tables
-
-        # Fetch images with status 'PENDING'
-        response = table.query(
-            IndexName='Manual_Status-index',
-            KeyConditionExpression=Key('Manual_Status').eq('PENDING')
-        )
-        pending_images = response['Items']
+            return jsonify({'error': 'Invalid parameter'}), 400
 
         # Fetch only count number of images
         new_images = random.sample(pending_images, min(count, len(pending_images)))
 
-        # Store the UUIDs of fetched images in the session
-        session_username = "Adithya"
-        user_fetched_image_uuids = session.get('user_fetched_image_uuids', [])
-        print(f"The user fetched image uuids are: {user_fetched_image_uuids}")
-        new_fetched_uuids = [item['UUID'] for item in new_images]
-        print(f"The new fetched uuids are: {new_fetched_uuids}")
-        
-        # Only consider images that have not been fetched before
-        unique_new_images = []
-        for item in new_images:
-            if item['UUID'] not in user_fetched_image_uuids:
-                unique_new_images.append(item)
-                user_fetched_image_uuids.append(item['UUID'])
-        
-        session['user_fetched_image_uuids'] = user_fetched_image_uuids
-        print(f"The new fetched uuids are: {session['user_fetched_image_uuids']}")
-
-        if not unique_new_images:
-            return jsonify({'message': 'No more images left as Pending'})
-
-        # Update the fetched image UUIDs in the user_table
-        update_expression = 'SET fetched_image_uuids = list_append(if_not_exists(fetched_image_uuids, :empty_list), :uuids)'
-        user_table.update_item(
-            Key={'username': session_username},
-            UpdateExpression=update_expression,
-            ExpressionAttributeValues={
-                ':uuids': [uuid for uuid in new_fetched_uuids if uuid in [item['UUID'] for item in unique_new_images]],
-                ':empty_list': []
-            }
+        # Store the session token, username, and UUIDs in session_table
+        image_uuids = [image['UUID'] for image in new_images]
+        session_item = session_table.get_item(
+            Key={'session_id': current_session_token}
+        ).get('Item', {})
+        fetched_uuids = session_item.get('fetched_image_uuids', [])
+        fetched_uuids.extend(image_uuids)
+        session_table.update_item(
+            Key={'session_id': current_session_token},
+            UpdateExpression='SET fetched_image_uuids = :fetched_uuids',
+            ExpressionAttributeValues={':fetched_uuids': fetched_uuids}
         )
 
-        # Remove fetched UUIDs from the main pool of images
-        fetched_image_uuids = [item['UUID'] for item in unique_new_images]
-        pending_images = [item for item in pending_images if item['UUID'] not in fetched_image_uuids]
+        # Update the 'Lock-Status' of images based on fetched UUIDs
+        for image in new_images:
+            if image['UUID'] in fetched_uuids:
+                image_table.update_item(
+                    Key={'UUID': image['UUID']},
+                    UpdateExpression='SET #ls = :locked',
+                    ExpressionAttributeNames={'#ls': 'Lock-Status'},
+                    ExpressionAttributeValues={':locked': 'Locked'}
+                )
 
-        return jsonify(unique_new_images)
+        return jsonify(new_images)
 
     except Exception as e:
-        return jsonify({'error': str(e)})
+        return jsonify({'error': str(e)}), 500
 
 
 
 
-
-
-    
 
 @app.route('/reset_fetched_uuids', methods=['POST'])
+@jwt_required()
 def reset_fetched_uuids():
     try:
-        session_username = session.get('username')
+        current_session_token = request.headers.get('Authorization').split(' ')[1]
 
-        # Update the fetched_image_uuids in the DynamoDB table with an empty list
-        update_expression = 'SET fetched_image_uuids = :empty_list'
-        user_table.update_item(
-            Key={'username': "Adithya"},
-            UpdateExpression=update_expression,
-            ExpressionAttributeValues={
-                ':empty_list': []
-            }
+        # Retrieve fetched UUIDs from session_table based on session ID
+        session_item = table3.get_item(
+            Key={'session_id': current_session_token}
+        ).get('Item', {})
+        fetched_uuids = session_item.get('fetched_image_uuids', [])
+
+        # Update the 'Lock-Status' of images based on fetched UUIDs
+        for uuid in fetched_uuids:
+            tables.update_item(
+                Key={'UUID': uuid},
+                UpdateExpression='SET #ls = :unlocked',
+                ExpressionAttributeNames={'#ls': 'Lock-Status'},
+                ExpressionAttributeValues={':unlocked': 'Unlocked'}
+            )
+
+        # Delete the item from session_table based on the session ID
+        table3.delete_item(
+            Key={'session_id': current_session_token}
         )
 
-        # Clear the fetched UUIDs from the session
-        session.pop('user_fetched_image_uuids', None)
-
-        return jsonify({'message': 'Fetched UUIDs reset successfully'})
+        return jsonify({'message': 'Session data deleted and Lock-Status updated successfully'})
 
     except Exception as e:
-        return jsonify({'error': str(e)})
+        return jsonify({'error': str(e)}), 500
+
+
+
+
 
 
 
@@ -215,8 +233,8 @@ def get_image_count():
 
         # Query DynamoDB to get all items in the table
         response = table.query(
-            IndexName='Manual_Status-index',
-            KeyConditionExpression=Key('Manual_Status').eq('PENDING')
+           IndexName='Manual_Status-Lock-Status-index',
+            KeyConditionExpression=Key('Manual_Status').eq('PENDING') & Key('Lock-Status').eq('Unlocked')
         )
         dynamodb_data = response['Items']        
 
@@ -261,6 +279,8 @@ def update_manual_status():
         return jsonify({'message': 'Update successful'})
     else:
         return jsonify({'error': 'Item not found'})
+
+
     
 @app.route('/fetch_images_by_uuid', methods=['POST'])
 def fetch_images_by_uuid():

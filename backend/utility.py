@@ -42,7 +42,8 @@ def upload_image_to_s3(photo_bytes, uuid, file_name):
         metadata = {
             'uuid': uuid,
             'file_name': file_name,
-            'Tenant_ID': TENANT_ID
+            'Tenant_ID': TENANT_ID,
+            'Lock-Status': "Unlocked"
         }
 
         # Upload the object with metadata directly using the S3 resource

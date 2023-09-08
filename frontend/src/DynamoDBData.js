@@ -3,10 +3,13 @@ import axios from 'axios';
 import './DynamoDBData.css';
 import { useLocation } from 'react-router-dom'; // Import useLocation hook
 import { useModerateCount } from './ModerateCountContext';
+import jwt_decode from 'jwt-decode';
 
 
 
 const DynamoDBData = () => {
+  const [usernameError, setUsernameError] = useState(false);
+  const [reasonError, setReasonError] = useState(false);
   const [data, setData] = useState([]);
   const [selectedImage, setSelectedImage] = useState(null);
   const [showReasonPopup, setShowReasonPopup] = useState(false);
@@ -23,12 +26,14 @@ const DynamoDBData = () => {
   const [isLoading, setIsLoading] = useState(false);
   const location = useLocation();
   const { username } = location.state || {};
-
-  // State to track if the component has been rendered once
-  const [hasRendered, setHasRendered] = useState(false);
+  const token = localStorage.getItem('token'); 
   
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
   useEffect(() => {
-
+    console.log('DynamoDBData component rendered');
       fetchDataFromServer();
    // Set to true after initial rendering
   
@@ -47,20 +52,28 @@ const DynamoDBData = () => {
 
 
   const fetchDataFromServer = () => {
-    if (isLoading) {
-      // A request is already in progress, do nothing
+    // Retrieve the session token and username from local storage
+    const sessionToken = localStorage.getItem('token');
+    console.log("The session token is:", sessionToken);
+    const moderateCount = localStorage.getItem('moderateCount');
+    console.log("The moderate_count is", moderateCount)
+  
+    if (!sessionToken) {
+      console.error('Session token not found');
       return;
     }
-
-    setIsLoading(true); // Set loading state to true
-
-    axios.get(`http://localhost:5000/fetch_new_images?moderate_count=${moderateCount}`)
+  
+    const headers = {
+      'Authorization': `Bearer ${sessionToken}`,
+    };
+  
+    axios.get(`http://localhost:5000/fetch_new_images?moderate_count=${moderateCount}`, { headers })
       .then(response => {
         if (Array.isArray(response.data)) {
           setData(response.data);
           const uuidList = response.data.map(item => item.UUID);
           setUuids(uuidList);
-          console.log(response.data)
+          console.log('the moderate_count is :', moderateCount);
           console.log("UUID List:", uuidList);
         } else {
           console.error("Response data is not an array:", response.data);
@@ -73,6 +86,10 @@ const DynamoDBData = () => {
         setIsLoading(false); // Reset loading state
       });
   };
+  
+  
+  
+  
   
   
 
@@ -90,15 +107,29 @@ const DynamoDBData = () => {
 
   const resetFetchedImageUUIDs = () => {
     setFetchedImageUUIDs([]); // Reset the fetched image UUIDs in local state
-    // Send a request to the server to clear the fetched UUIDs on the backend
-    axios.post('http://localhost:5000/reset_fetched_uuids')
-      .then(response => {
-        console.log('Fetched UUIDs reset:', response.data);
-      })
-      .catch(error => {
-        console.error('Error resetting fetched UUIDs:', error);
-      });
+    // Get the token from local storage or wherever you are storing it
+    const token = localStorage.getItem('token');
+    
+    // Check if the token is available
+    if (token) {
+      const headers = {
+        'Authorization': `Bearer ${token}`
+      };
+      
+      // Send a request to the server to clear the fetched UUIDs on the backend
+      axios.post('http://localhost:5000/reset_fetched_uuids', null, { headers })
+        .then(response => {
+          console.log('Fetched UUIDs reset:', response.data);
+        })
+        .catch(error => {
+          console.error('Error resetting fetched UUIDs:', error);
+        });
+    } else {
+      console.error('Token not available.');
+    }
   };
+  
+  
   
 
 
@@ -139,7 +170,15 @@ const DynamoDBData = () => {
 
 
   const fetchNewImages = () => {
-    axios.get(`http://localhost:5000/fetch_new_images?count=${newImageCount}&uuids=${uuids.join(',')}`)
+    // Get the JWT token from your storage (localStorage or sessionStorage)
+    const token = localStorage.getItem('token'); // Replace with your storage method
+  
+    // Configure headers with the JWT token
+    const headers = {
+      Authorization: `Bearer ${token}`
+    };
+  
+    axios.get(`http://localhost:5000/fetch_new_images?count=${newImageCount}&uuids=${uuids.join(',')}`, { headers })
       .then(response => {
         if (response.data.message) {
           alert(response.data.message);
@@ -154,9 +193,14 @@ const DynamoDBData = () => {
   };
   
   
+  
 
   const handleReasonSubmit = (status) => {
     if (selectedItem && reasonInput.trim() !== '') {
+      // Reset error states
+      setUsernameError(false);
+      setReasonError(false);
+  
       const timestamp = new Date().toISOString();
       const formattedTimestamp = `(${timestamp})`;
       const updatedReason = `${selectedItem.reason_for_change || ''}\n${reasonInput} ${formattedTimestamp} (by ${username|| usernameInput})`;
@@ -193,8 +237,17 @@ const DynamoDBData = () => {
         .catch(error => {
           console.error('Error updating status:', error);
         });
+    } else {
+      // Set error states if inputs are empty
+      if (!usernameInput.trim()) {
+        setUsernameError(true);
+      }
+      if (!reasonInput.trim()) {
+        setReasonError(true);
+      }
     }
   };
+  
    
   
   
@@ -202,6 +255,7 @@ const DynamoDBData = () => {
   return (
 <div className="container">
   <h1>Moderation Results</h1>
+  
   <div className="center-buttons">
     <button className="refresh-button" onClick={fetchImageCount}>
       Refresh Image Count: {imageCount}
@@ -366,25 +420,27 @@ const DynamoDBData = () => {
     <span className="close" onClick={handlePopupCancel}>&times;</span>
     <h2>Reason for Status Change</h2>
     <div className="popup-form">
-      <div className="input-container">
-        <label htmlFor="usernameInput">Name:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</label>
-        <input
-          type="text"
-          id="usernameInput"
-          value={usernameInput}
-          onChange={event => setUsernameInput(event.target.value)}
-          placeholder="Enter your username"
-        />
-      </div>
-      <div className="input-container">
-        <label htmlFor="reasonInput">Reason:&nbsp;&nbsp;</label>
-        <textarea
-          id="reasonInput"
-          value={reasonInput}
-          onChange={event => setReasonInput(event.target.value)}
-          placeholder="Enter reason here..."
-        />
-      </div>
+    <div className={`input-container ${usernameError ? 'error' : ''}`}>
+      <label htmlFor="usernameInput">Name:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</label>
+      <input
+        type="text"
+        id="usernameInput"
+        value={usernameInput}
+        onChange={event => setUsernameInput(event.target.value)}
+        placeholder="Enter your username"
+      />
+      {usernameError && <div className="error-message">Please enter a username.</div>}
+    </div>
+    <div className={`input-container ${reasonError ? 'error' : ''}`}>
+      <label htmlFor="reasonInput">Reason:&nbsp;&nbsp;</label>
+      <textarea
+        id="reasonInput"
+        value={reasonInput}
+        onChange={event => setReasonInput(event.target.value)}
+        placeholder="Enter reason here..."
+      />
+      {reasonError && <div className="error-message">Please enter a reason.</div>}
+    </div>
       <div className="popup-buttons">
   <button onClick={() => handleReasonSubmit('Approved')} className="approve-button">
     Approve
