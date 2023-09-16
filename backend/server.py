@@ -4,11 +4,11 @@ from utility import upload_image_to_s3, receive_message_from_sqs, send_uuids_to_
 from config import TENANT_ID, tables, table2, table3
 from flask_cors import CORS
 import random
-import uuid
+import asyncio
 from flask_session import Session
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity
-from okta_jwt_verifier import AccessTokenVerifier  
+from okta_jwt_verifier import AccessTokenVerifier, JWTVerifier
 from okta_config import OKTA_CONFIG  # Import the Okta configuration
 
 
@@ -21,64 +21,39 @@ app.secret_key = 'super secret key'
 user_table = table2
 jwt = JWTManager(app)
 
-@app.route('/register', methods=['POST'])
-def register_user():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-
-    if not username or not password:
-        return jsonify({'error': 'Username and password are required'}), 400
-    
-    # Check if the username is already taken
-    existing_user = user_table.get_item(Key={'username': username}).get('Item')
-    if existing_user:
-        return jsonify({'error': 'Username already exists'}), 400
-
-    # Hash the password before storing it
-    hashed_password = generate_password_hash(password, method='scrypt')
-
-    # Check if the username is already taken
-    existing_user = user_table.get_item(Key={'username': username}).get('Item')
-    if existing_user:
-        return jsonify({'error': 'Username already exists'}), 400
-
-    # Store the user details in DynamoDB
-    user_table.put_item(Item={'username': username, 'password': hashed_password})
-
-    return jsonify({'message': 'User registered successfully'}), 201
-
 
 @app.route('/login', methods=['POST'])
-def login_user():
+async def login_user():
     data = request.get_json()
-    okta_token = data.get('okta_token')
+    access_token = data.get('access_token')
+    sub = data.get('sub')
 
-    print(f"Okta token is:{okta_token}")
+    # print(f"Access token is: {access_token}")
     
-    if not okta_token:
-        return jsonify({'error': 'Okta token is required'}), 400
+    if not access_token:
+        return jsonify({'error': 'Access token is required'}), 400
 
-    print(f"Received Okta token: {okta_token}")
+    # print(f"Received Access token: {access_token}")
+    print(f"the sub name is:{sub}")
 
-    # Validate the Okta token using the Okta configuration
-    verifier = AccessTokenVerifier(OKTA_CONFIG['issuer'], OKTA_CONFIG['client_id'])
+    # Retrieve Okta configuration from your okta_config.py
+    okta_issuer = OKTA_CONFIG['issuer']
+    okta_client_id = OKTA_CONFIG['client_id']
+    
+
+    jwt_verifier = JWTVerifier(okta_issuer, okta_client_id)
 
     try:
-        claims = verifier.verify_token(okta_token)
+        # Verify the access token
+        await jwt_verifier.verify_access_token(access_token)
+        print('Access token validated successfully.')
+        access_token = create_access_token(identity=sub)
+        print(f'the new access tokens are:{access_token}')
+        
+        return jsonify({'access_token': access_token}), 200
+
     except Exception as e:
         return jsonify({'error': 'Invalid Okta token'}), 401
-
-    # If the Okta token is valid, you can proceed with generating an access token
-    # and performing any required authentication logic.
-
-    # Create a regular JWT access token with the identity (customize as needed)
-    access_token = create_access_token(identity=claims['sub'])
-
-    return jsonify({'access_token': access_token}), 200
-
-
-
 
     
 

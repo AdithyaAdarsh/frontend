@@ -55,8 +55,6 @@ const DynamoDBData = () => {
     // Retrieve the session token and username from local storage
     const sessionToken = localStorage.getItem('token');
     console.log("The session token is:", sessionToken);
-    const moderateCount = localStorage.getItem('moderateCount');
-    console.log("The moderate_count is", moderateCount)
   
     if (!sessionToken) {
       console.error('Session token not found');
@@ -331,7 +329,7 @@ const DynamoDBData = () => {
                   />
                 </td>
                 <td>
-                  <button onClick={() => handleManualReview(item)} className="button">
+                  <button onClick={() => handleManualReview(item)} className="btn btn-outline-info">
                     Change Status
                   </button>
                 </td>
@@ -458,5 +456,7 @@ const DynamoDBData = () => {
     </div>
   );
 };
-
+export const resetFetchedImageUUIDs = () => {
+  // Your existing implementation of resetFetchedImageUUIDs function
+};
 export default DynamoDBData;
