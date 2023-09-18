@@ -19,11 +19,13 @@ const LoginCallback = () => {
 
         if (oktaTokenStorage && oktaTokenStorage.accessToken && oktaTokenStorage.accessToken.accessToken) {
           const accessToken = oktaTokenStorage.accessToken.accessToken;
-          const sub = oktaTokenStorage.accessToken.claims.sub; // Access the 'sub' claim
+          const idToken = oktaTokenStorage.idToken.idToken;
+          const name = oktaTokenStorage.idToken.claims.name; // Access the 'sub' claim
+          localStorage.setItem('name', name)
 
           // Now, you have the access token and the 'sub' claim, and you can proceed to send them to the server
           axios
-            .post('http://localhost:5000/login', { access_token: accessToken, sub: sub })
+            .post('http://localhost:5000/login', { access_token: accessToken, id_token:idToken, name: name })
             .then((response) => {
               if (response.data.access_token) {
                 // Store the new access token securely (localStorage or sessionStorage)

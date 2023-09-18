@@ -34,10 +34,19 @@ const DynamoDBData = () => {
   };
   useEffect(() => {
     console.log('DynamoDBData component rendered');
-      fetchDataFromServer();
-   // Set to true after initial rendering
-  
+    fetchDataFromServer();
+    // Set to true after initial rendering
   }, []);
+
+  useEffect(() => {
+    // Retrieve the username from local storage
+    const storedUsername = localStorage.getItem('name');
+
+    // Set the usernameInput state to the stored username and disable the input field
+    setUsernameInput(storedUsername || ''); // Set to empty string if not found
+  }, []); // Empty dependency array to run this effect only once
+
+  
 
   const fetchImageCount = () => {
     axios.get('http://localhost:5000/image_count')
@@ -426,6 +435,7 @@ const DynamoDBData = () => {
         value={usernameInput}
         onChange={event => setUsernameInput(event.target.value)}
         placeholder="Enter your username"
+        readOnly
       />
       {usernameError && <div className="error-message">Please enter a username.</div>}
     </div>

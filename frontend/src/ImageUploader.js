@@ -91,10 +91,20 @@ function ImageUploader({ setFilesUploaded }) {
         </form>
 
         <div className="progress-container">
-          <div className="progress-bar" style={{ width: `${overallProgress}%` }}>
-            {isUploadComplete ? '100%' : `${overallProgress}%`}
+          <div className="progress">
+            <div
+              className="progress-bar bg-success"
+              role="progressbar"
+              style={{ width: `${overallProgress}%`  }}
+              aria-valuenow={overallProgress}
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              {isUploadComplete ? '100%' : `${overallProgress}%`}
+            </div>
           </div>
         </div>
+
 
         <div className="image-preview-container">
           {imageUrls.map((imageUrl, index) => (
@@ -108,7 +118,7 @@ function ImageUploader({ setFilesUploaded }) {
         </div>
       </div>
 
-      {moderationResults.length > 0 && (
+      {/* {moderationResults.length > 0 && (
         <div className="result-container">
           {moderationResults.map((result, index) => (
             <div
@@ -123,10 +133,10 @@ function ImageUploader({ setFilesUploaded }) {
             </div>
           ))}
         </div>
-      )}
+      )} */}
 
-      {uploadMessage && (
-        <div className={`upload-message ${uploadMessage.includes('successfully') ? 'upload-success' : 'upload-error'}`}>
+{uploadMessage && (
+        <div className={`upload-message alert ${uploadMessage.includes('successfully') ? 'alert-success' : 'alert-danger'}`}>
           {uploadMessage}
         </div>
       )}

@@ -26,7 +26,7 @@ jwt = JWTManager(app)
 async def login_user():
     data = request.get_json()
     access_token = data.get('access_token')
-    sub = data.get('sub')
+    name = data.get('name')
 
     # print(f"Access token is: {access_token}")
     
@@ -34,7 +34,7 @@ async def login_user():
         return jsonify({'error': 'Access token is required'}), 400
 
     # print(f"Received Access token: {access_token}")
-    print(f"the sub name is:{sub}")
+    print(f"the sub name is:{name}")
 
     # Retrieve Okta configuration from your okta_config.py
     okta_issuer = OKTA_CONFIG['issuer']
@@ -47,7 +47,7 @@ async def login_user():
         # Verify the access token
         await jwt_verifier.verify_access_token(access_token)
         print('Access token validated successfully.')
-        access_token = create_access_token(identity=sub)
+        access_token = create_access_token(identity=name)
         print(f'the new access tokens are:{access_token}')
         
         return jsonify({'access_token': access_token}), 200
