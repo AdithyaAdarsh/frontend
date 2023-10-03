@@ -37,7 +37,7 @@ function App() {
 
   const handleLogout = async () => {
     try {
-      // Sign out the user and clear the session//
+      // Sign out the user and clear the session
       await oktaAuth.signOut();
       resetFetchedImageUUIDs();
 
